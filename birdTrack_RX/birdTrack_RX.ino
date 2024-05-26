@@ -1,3 +1,13 @@
+/* SPDX-License-Identifier: MIT
+ *
+ * This files uses part of code from:
+ * https://github.com/ropg/heltec_esp32_lora_v3/blob/main/examples/LoRa_rx_tx/LoRa_rx_tx.ino
+ *
+ * Arduino board needed is Heltec WiFi LoRa 32
+ *
+ * Copyright (c) 2024 Louis Mayencourt
+ */
+
 /**
  * Send and receive LoRa-modulation packets with a sequence number, showing RSSI
  * and SNR for received packets on the little display.
@@ -7,8 +17,6 @@
  *
  * This works on the stick, but the output on the screen gets cut off.
 */
-
-
 
 // Turns the 'PRG' button into the power button, long press is off 
 #define HELTEC_POWER_BUTTON   // must be before "#include <heltec_unofficial.h>"
