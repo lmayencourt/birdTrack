@@ -5,7 +5,7 @@
  *
  * Arduino board needed is CubeCell-GPS（HTCC-AB02S
  *
- * Copyright (c) 2023 Louis Mayencourt
+ * Copyright (c) 2024 Louis Mayencourt
  */
 
 // LoRa radio
@@ -23,8 +23,8 @@ Air530ZClass GPS;
 
 // OLED Screen
 // #include <Wire.h>
-// #include "HT_SSD1306Wire.h"
-// SSD1306Wire  display(0x3c, 500000, SDA, SCL, GEOMETRY_128_64, GPIO10); // addr , freq , SDA, SCL, resolution , rst
+#include "HT_SSD1306Wire.h"
+extern SSD1306Wire display;
 
 /*
  * set LoraWan_RGB to 1,the RGB active in loraWan
@@ -90,10 +90,10 @@ void setup()
   VextON();
   delay(100);
 
-  // display.init();
-  // display.setFont(ArialMT_Plain_10);
+  display.init();
+  display.setFont(ArialMT_Plain_10);
 
-  // displayInfo();
+  displayInfo();
 
   txNumber=0;
 
@@ -207,18 +207,18 @@ void displayInfo()
   Serial.println(GPS.speed.kmph());
   Serial.println();
 
-  // display.clear();
+  display.clear();
 
-  // display.drawString(0, 0, "SATS: " + String(GPS.satellites.value()));
-  // uint16_t battery_mv = getBatteryVoltage();
-  // display.drawString(50, 0, "batt:" + String(batteryMvToPercent(battery_mv)) + "% (" + String(float(battery_mv)/1000) + "mV");
-  // display.drawString(0, 10, "LAT:" + String(GPS.location.lng()));
-  // display.drawString(0, 20, "LON:" + String(GPS.location.lat()));
-  // display.drawString(0, 30, "ALT:" + String(GPS.altitude.meters()) + "m");
-  // display.drawString(0, 40, "SPEED:" + String(GPS.speed.kmph()) + "km/h");
-  // display.drawString(0, 50, "COURSE:" + String(GPS.course.deg()));
+  display.drawString(0, 0, "SATS: " + String(GPS.satellites.value()));
+  uint16_t battery_mv = getBatteryVoltage();
+  display.drawString(50, 0, "batt:" + String(batteryMvToPercent(battery_mv)) + "% (" + String(float(battery_mv)/1000) + "mV");
+  display.drawString(0, 10, "LAT:" + String(GPS.location.lng()));
+  display.drawString(0, 20, "LON:" + String(GPS.location.lat()));
+  display.drawString(0, 30, "ALT:" + String(GPS.altitude.meters()) + "m");
+  display.drawString(0, 40, "SPEED:" + String(GPS.speed.kmph()) + "km/h");
+  display.drawString(0, 50, "COURSE:" + String(GPS.course.deg()));
 
-  // display.display();
+  display.display();
 }
 
 void OnTxDone( void )
