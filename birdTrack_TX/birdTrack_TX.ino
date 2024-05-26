@@ -66,6 +66,12 @@ static RadioEvents_t RadioEvents;
 float txNumber;
 bool lora_idle=true;
 
+// Legal 1% duty cycle
+uint64_t last_tx = 0;
+uint64_t tx_start_time;
+uint64_t tx_end_time;
+uint64_t minimum_pause;
+
 void VextON(void)
 {
   pinMode(Vext,OUTPUT);
@@ -126,13 +132,20 @@ void loop(){
   if(lora_idle == true)
   {
     delay(1000);
-    txNumber += 0.01;
-    sprintf(txpacket,"Hello world number %0.2f",txNumber);  //start a package
+    sprintf(txpacket, "lat:%f lon:%f alt:%f", GPS.location.lat(), GPS.location.lng(), GPS.altitude.meters());
     Serial.printf("\r\nsending packet \"%s\" , length %d\r\n",txpacket, strlen(txpacket));
     turnOnRGB(COLOR_SEND,0); //change rgb color
+    tx_start_time = millis();
     Radio.Send( (uint8_t *)txpacket, strlen(txpacket) ); //send the package out 
     lora_idle = false;
+
+    // Serial.println("tx time:");
+    // Serial.println()
+  } else {
+    delay(minimum_pause);
   }
+  Serial.printf("Tx time %i -> %i  delta %i\n", tx_start_time, tx_end_time, (tx_end_time - tx_start_time));
+  Serial.printf("Legal limit, wait %i sec.\n", (int)((minimum_pause - (millis() - tx_end_time)) / 1000) + 1);
 
 }
 
@@ -223,9 +236,12 @@ void displayInfo()
 
 void OnTxDone( void )
 {
+  tx_end_time = millis();
   turnOffRGB();
-  Serial.println("TX done......");
+  Serial.printf("TX done %i......%i\n", tx_start_time, tx_end_time);
   lora_idle = true;
+  minimum_pause = (tx_end_time - tx_start_time) * 100;
+  last_tx = millis();
 }
 
 void OnTxTimeout( void )
