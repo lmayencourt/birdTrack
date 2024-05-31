@@ -46,6 +46,10 @@
 // transmissting without an antenna can damage your hardware.
 #define TRANSMIT_POWER      0
 
+// Ble advertising library
+#include "SimpleBLE.h"
+SimpleBLE ble;
+
 String rxdata;
 volatile bool rxFlag = false;
 long counter = 0;
@@ -70,6 +74,9 @@ void setup() {
   RADIOLIB_OR_HALT(radio.setOutputPower(TRANSMIT_POWER));
   // Start receiving
   RADIOLIB_OR_HALT(radio.startReceive(RADIOLIB_SX126X_RX_TIMEOUT_INF));
+
+  // BLE
+  ble.begin("BirdTrack");
 }
 
 void loop() {
@@ -110,6 +117,9 @@ void loop() {
       both.printf("RX [%s]\n", rxdata.c_str());
       both.printf("  RSSI: %.2f dBm\n", radio.getRSSI());
       both.printf("  SNR: %.2f dB\n", radio.getSNR());
+      char adv_data[20];
+      sprintf(adv_data, "RSSI: %.2f dB", radio.getRSSI());
+      ble.begin(adv_data);
     }
     RADIOLIB_OR_HALT(radio.startReceive(RADIOLIB_SX126X_RX_TIMEOUT_INF));
   }
