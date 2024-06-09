@@ -11,6 +11,7 @@
 // LoRa radio
 #include "LoRaWan_APP.h"
 #include "Arduino.h"
+#include "ArduinoLog.h"
 
 #include "OnBoardDisplay.h"
 #include "OnBoardGPS.h"
@@ -72,11 +73,36 @@ enum BirdTrackingDeviceState {
 
 BirdTrackingDeviceState device_state;
 
+void logPrefix(Print* _logOutput, int logLevel) {
+  // Division constants
+  const unsigned long MSECS_PER_SEC       = 1000;
+  const unsigned long SECS_PER_MIN        = 60;
+  const unsigned long SECS_PER_HOUR       = 3600;
+  const unsigned long SECS_PER_DAY        = 86400;
+
+  // Total time
+  const unsigned long msecs               =  millis();
+  const unsigned long secs                =  msecs / MSECS_PER_SEC;
+
+  // Time in components
+  const unsigned long MilliSeconds        =  msecs % MSECS_PER_SEC;
+  const unsigned long Seconds             =  secs  % SECS_PER_MIN ;
+  const unsigned long Minutes             = (secs  / SECS_PER_MIN) % SECS_PER_MIN;
+  const unsigned long Hours               = (secs  % SECS_PER_DAY) / SECS_PER_HOUR;
+
+  // Time as string
+  char timestamp[20];
+  sprintf(timestamp, "%02d:%02d:%02d.%03d ", Hours, Minutes, Seconds, MilliSeconds);
+  _logOutput->print(timestamp);
+}
+
 void setup()
 {
   Serial.begin(115200);
-  Serial.println("Bird Tracking device");
-  Serial.println("Starting...");
+  Log.setPrefix(logPrefix);
+  Log.begin(LOG_LEVEL_VERBOSE, &Serial);
+  Log.noticeln("Bird Tracking device");
+  Log.noticeln("Starting...");
 
   display_on();
   display.init();
@@ -102,7 +128,7 @@ void setup()
   // device_state = BTD_STATE_GPS_SEARCHING;
   device_state = BTD_STATE_LORA_SEND;
 
-  Serial.println("Setup done, enter main loop");
+  Log.noticeln("Setup done, enter main loop");
 }
 
 void loop(){
@@ -111,7 +137,7 @@ void loop(){
 
   switch(device_state) {
     case BTD_STATE_GPS_SEARCHING:
-      Serial.println("GPS Searching...");
+      Log.noticeln("GPS Searching...");
       GpsDateTime datetime;
       gps_get_date_time(&datetime);
       display.clear();  
@@ -129,9 +155,9 @@ void loop(){
         index = sprintf(str,"%02d:%02d:%02d",datetime.hour,datetime.minute,datetime.second);
         str[index] = 0;
         display.drawString(60, 50, str);
-        Serial.println(str);
+        Log.noticeln(str);
       } else {
-        Serial.println("No GPS time yet...");
+        Log.noticeln("No GPS time yet...");
         display.drawString(60, 0, "No GPS time yet..");
       }
 
@@ -146,14 +172,14 @@ void loop(){
         // display.setTextAlignment(TEXT_ALIGN_CENTER);
         // display.setFont(ArialMT_Plain_16);
         // display.drawString(64, 32-16/2, "No GPS signal");
-        // Serial.println("No GPS signal");
+        // Log.noticeln("No GPS signal");
         // display.display();
         gps_update(1000);
       }
 
       break;
     case BTD_STATE_GPS_LOCKED:
-      Serial.println("GPS Locked...");
+      Log.noticeln("GPS Locked...");
       display.clear();  
       display.setTextAlignment(TEXT_ALIGN_CENTER);
       display.setFont(ArialMT_Plain_16);
@@ -181,29 +207,29 @@ void loop(){
           payload.altitude = gps_info.altitude;
           size_t payload_length = encode_payload(payload, (uint8_t*)&txpacket, sizeof(txpacket));
           if (payload_length != 14) {
-            Serial.println("Error when building payload");
+            Log.errorln("Failed to build payload %d", payload_length);
           }
-          Serial.printf("\r\nsending packet \"%s\" , length %d\r\n",txpacket, payload_length);
+          Log.traceln("Sending packet \"%s\" , length %d", txpacket, payload_length);
           // turnOnRGB(COLOR_SEND,0); //change rgb color
           tx_start_time = millis();
           Radio.Send( (uint8_t *)txpacket, payload_length); //send the package out 
 
-          // Serial.println("tx time:");
-          // Serial.println()
+          // Log.noticeln("tx time:");
+          // Log.noticeln()
         } else {
           // delay(minimum_pause);
           device_state = BTD_STATE_SLEEP;
         }
-        Serial.printf("Tx time %i -> %i  delta %i\n", tx_start_time, tx_end_time, (tx_end_time - tx_start_time));
-        Serial.printf("Legal limit, wait %i sec.\n", (int)((minimum_pause - (millis() - tx_end_time)) / 1000) + 1);
+        Log.traceln("Tx time %i -> %i  delta %i", tx_start_time, tx_end_time, (tx_end_time - tx_start_time));
+        Log.traceln("Legal limit, wait %i sec.", (int)((minimum_pause - (millis() - tx_end_time)) / 1000) + 1);
       break;
     case BTD_STATE_SLEEP:
-      Serial.println("Enter deep sleep...");
+      Log.noticeln("Enter deep sleep...");
       delay(5000);
       device_state = BTD_STATE_LORA_SEND;
       break;
     default:
-      Serial.printf("Error: Unhandled state &i", device_state);
+      Log.errorln("Unhandled state &i", device_state);
       break;
   }
 
@@ -213,7 +239,7 @@ void OnTxDone( void )
 {
   tx_end_time = millis();
   turnOffRGB();
-  Serial.printf("TX done %i......%i\n", tx_start_time, tx_end_time);
+  Log.traceln("TX done %i......%i", tx_start_time, tx_end_time);
   lora_tx_done = true;
   minimum_pause = (tx_end_time - tx_start_time) * 100;
   last_tx = millis();
@@ -223,6 +249,6 @@ void OnTxTimeout( void )
 {
   turnOffRGB();
   Radio.Sleep( );
-  Serial.println("TX Timeout......");
+  Log.noticeln("TX Timeout......");
   lora_tx_done = true;
 }
