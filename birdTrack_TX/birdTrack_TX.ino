@@ -58,16 +58,17 @@ float txNumber;
 bool lora_tx_done=true;
 
 // Legal 1% duty cycle
-uint64_t last_tx = 0;
-uint64_t tx_start_time;
-uint64_t tx_end_time;
-uint64_t minimum_pause;
+uint32_t last_tx = 0;
+uint32_t tx_start_time = 0;
+uint32_t tx_end_time = 0;
+uint32_t minimum_pause = 999999;
 
 enum BirdTrackingDeviceState {
   BTD_STATE_GPS_SEARCHING,
   BTD_STATE_GPS_TIME,
   BTD_STATE_GPS_LOCKED,
   BTD_STATE_LORA_SEND,
+  BTD_STATE_LORA_SEND_WAIT_DONE,
   BTD_STATE_SLEEP,
 };
 
@@ -113,7 +114,7 @@ void setup()
   gps_config();
 
   txNumber=0;
-  lora_tx_done = false;
+  lora_tx_done = true;
 
   RadioEvents.TxDone = OnTxDone;
   RadioEvents.TxTimeout = OnTxTimeout;
@@ -193,39 +194,46 @@ void loop(){
       gps_idle();
       device_state = BTD_STATE_LORA_SEND;
     break;
-    case BTD_STATE_LORA_SEND:
-        if(lora_tx_done == false)
-        {
-          delay(1000);
-          GpsInfo gps_info;
-          gps_get_info(&gps_info);
-          // sprintf(txpacket, "lat:%f lon:%f alt:%f", gps_info.latitude, gps_info.longitude, gps_info.altitude);
-          DecodedPayload payload;
-          payload.command = CMD_FULL_POSITION_UPDATE;
-          payload.latitude = gps_info.latitude;
-          payload.longitude = gps_info.longitude;
-          payload.altitude = gps_info.altitude;
-          size_t payload_length = encode_payload(payload, (uint8_t*)&txpacket, sizeof(txpacket));
-          if (payload_length != 14) {
-            Log.errorln("Failed to build payload %d", payload_length);
-          }
-          Log.traceln("Sending packet \"%s\" , length %d", txpacket, payload_length);
-          // turnOnRGB(COLOR_SEND,0); //change rgb color
-          tx_start_time = millis();
-          Radio.Send( (uint8_t *)txpacket, payload_length); //send the package out 
-
-          // Log.noticeln("tx time:");
-          // Log.noticeln()
-        } else {
-          // delay(minimum_pause);
-          device_state = BTD_STATE_SLEEP;
+    case BTD_STATE_LORA_SEND: {
+        // Build payload
+        GpsInfo gps_info;
+        gps_get_info(&gps_info);
+        // sprintf(txpacket, "lat:%f lon:%f alt:%f", gps_info.latitude, gps_info.longitude, gps_info.altitude);
+        DecodedPayload payload;
+        payload.command = CMD_FULL_POSITION_UPDATE;
+        // payload.latitude = gps_info.latitude;
+        // payload.longitude = gps_info.longitude;
+        // payload.altitude = gps_info.altitude;
+        payload.latitude = 10.0;
+        payload.longitude = 20.0;
+        payload.altitude = 30.0;
+        size_t payload_length = encode_payload(payload, (uint8_t*)&txpacket, sizeof(txpacket));
+        if (payload_length != 14) {
+          Log.errorln("Failed to build payload %d", payload_length);
         }
-        Log.traceln("Tx time %i -> %i  delta %i", tx_start_time, tx_end_time, (tx_end_time - tx_start_time));
-        Log.traceln("Legal limit, wait %i sec.", (int)((minimum_pause - (millis() - tx_end_time)) / 1000) + 1);
+
+        // Start sending
+        uint32_t time_on_air = Radio.TimeOnAir(MODEM_LORA, payload_length);
+        Log.traceln("Sending packet \"%s\" , length %d, time: %d (ms)", txpacket, payload_length, time_on_air);
+        // turnOnRGB(COLOR_SEND,0); //change rgb color
+        tx_start_time = millis();
+        lora_tx_done = false;
+        Radio.Send( (uint8_t *)txpacket, payload_length); //send the package out 
+        device_state = BTD_STATE_LORA_SEND_WAIT_DONE;
+      }
+      break;
+    case BTD_STATE_LORA_SEND_WAIT_DONE:
+      if (lora_tx_done) {
+        tx_end_time = millis();
+        Log.traceln("Tx time %u -> %u delta %u (ms)", tx_start_time, tx_end_time, (tx_end_time - tx_start_time));
+        minimum_pause = (tx_end_time - tx_start_time) * 100;
+        device_state = BTD_STATE_SLEEP;
+      }
       break;
     case BTD_STATE_SLEEP:
-      Log.noticeln("Enter deep sleep...");
-      delay(5000);
+      Log.traceln("Legal limit, wait %u sec.", (int)((minimum_pause - (millis() - tx_end_time)) / 1000) + 1);
+      Log.noticeln("Enter deep sleep for %u...", minimum_pause);
+      delay(minimum_pause);
       device_state = BTD_STATE_LORA_SEND;
       break;
     default:
@@ -237,12 +245,8 @@ void loop(){
 
 void OnTxDone( void )
 {
-  tx_end_time = millis();
   turnOffRGB();
-  Log.traceln("TX done %i......%i", tx_start_time, tx_end_time);
   lora_tx_done = true;
-  minimum_pause = (tx_end_time - tx_start_time) * 100;
-  last_tx = millis();
 }
 
 void OnTxTimeout( void )
