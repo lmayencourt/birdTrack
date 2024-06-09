@@ -14,6 +14,7 @@
 
 #include "OnBoardDisplay.h"
 #include "OnBoardGPS.h"
+#include "PayloadEncoder.h"
 
 /*
  * set LoraWan_RGB to 1,the RGB active in loraWan
@@ -97,7 +98,9 @@ void setup()
                                   LORA_PREAMBLE_LENGTH, LORA_FIX_LENGTH_PAYLOAD_ON,
                                   true, 0, 0, LORA_IQ_INVERSION_ON, 3000 ); 
 
-  device_state = BTD_STATE_GPS_SEARCHING;
+  // For testing, start in Lora directly
+  // device_state = BTD_STATE_GPS_SEARCHING;
+  device_state = BTD_STATE_LORA_SEND;
 
   Serial.println("Setup done, enter main loop");
 }
@@ -170,20 +173,34 @@ void loop(){
           delay(1000);
           GpsInfo gps_info;
           gps_get_info(&gps_info);
-          sprintf(txpacket, "lat:%f lon:%f alt:%f", gps_info.latitude, gps_info.longitude, gps_info.altitude);
-          Serial.printf("\r\nsending packet \"%s\" , length %d\r\n",txpacket, strlen(txpacket));
+          // sprintf(txpacket, "lat:%f lon:%f alt:%f", gps_info.latitude, gps_info.longitude, gps_info.altitude);
+          DecodedPayload payload;
+          payload.command = CMD_FULL_POSITION_UPDATE;
+          payload.latitude = gps_info.latitude;
+          payload.longitude = gps_info.longitude;
+          payload.altitude = gps_info.altitude;
+          size_t payload_length = encode_payload(payload, (uint8_t*)&txpacket, sizeof(txpacket));
+          if (payload_length != 14) {
+            Serial.println("Error when building payload");
+          }
+          Serial.printf("\r\nsending packet \"%s\" , length %d\r\n",txpacket, payload_length);
           // turnOnRGB(COLOR_SEND,0); //change rgb color
           tx_start_time = millis();
-          Radio.Send( (uint8_t *)txpacket, strlen(txpacket) ); //send the package out 
+          Radio.Send( (uint8_t *)txpacket, payload_length); //send the package out 
 
           // Serial.println("tx time:");
           // Serial.println()
         } else {
           // delay(minimum_pause);
+          device_state = BTD_STATE_SLEEP;
         }
         Serial.printf("Tx time %i -> %i  delta %i\n", tx_start_time, tx_end_time, (tx_end_time - tx_start_time));
         Serial.printf("Legal limit, wait %i sec.\n", (int)((minimum_pause - (millis() - tx_end_time)) / 1000) + 1);
-        Serial.println("Sending LoRa trame...");
+      break;
+    case BTD_STATE_SLEEP:
+      Serial.println("Enter deep sleep...");
+      delay(5000);
+      device_state = BTD_STATE_LORA_SEND;
       break;
     default:
       Serial.printf("Error: Unhandled state &i", device_state);
