@@ -49,7 +49,7 @@
 #define RX_TIMEOUT_VALUE                            1000
 #define BUFFER_SIZE                                 30 // Define the payload size here
 
-char txpacket[BUFFER_SIZE];
+char tx_packet[BUFFER_SIZE];
 char rxpacket[BUFFER_SIZE];
 
 static RadioEvents_t RadioEvents;
@@ -198,7 +198,7 @@ void loop(){
         // Build payload
         GpsInfo gps_info;
         gps_get_info(&gps_info);
-        // sprintf(txpacket, "lat:%f lon:%f alt:%f", gps_info.latitude, gps_info.longitude, gps_info.altitude);
+        // sprintf(tx_packet, "lat:%f lon:%f alt:%f", gps_info.latitude, gps_info.longitude, gps_info.altitude);
         DecodedPayload payload;
         payload.command = CMD_FULL_POSITION_UPDATE;
         // payload.latitude = gps_info.latitude;
@@ -207,18 +207,22 @@ void loop(){
         payload.latitude = 10.0;
         payload.longitude = 20.0;
         payload.altitude = 30.0;
-        size_t payload_length = encode_payload(payload, (uint8_t*)&txpacket, sizeof(txpacket));
+        size_t payload_length = encode_payload(payload, (uint8_t*)&tx_packet, sizeof(tx_packet));
         if (payload_length != 14) {
           Log.errorln("Failed to build payload %d", payload_length);
         }
 
         // Start sending
+        char payload_txt[30];
+        for (int i=0; i<payload_length; i++) {
+          sprintf(&payload_txt[2*i], "%02X", tx_packet[i]);
+        }
         uint32_t time_on_air = Radio.TimeOnAir(MODEM_LORA, payload_length);
-        Log.traceln("Sending packet \"%s\" , length %d, time: %d (ms)", txpacket, payload_length, time_on_air);
+        Log.traceln("Sending packet \"%s\" , length %d, time: %d (ms)", payload_txt, payload_length, time_on_air);
         // turnOnRGB(COLOR_SEND,0); //change rgb color
         tx_start_time = millis();
         lora_tx_done = false;
-        Radio.Send( (uint8_t *)txpacket, payload_length); //send the package out 
+        Radio.Send( (uint8_t *)tx_packet, payload_length); //send the package out 
         device_state = BTD_STATE_LORA_SEND_WAIT_DONE;
       }
       break;

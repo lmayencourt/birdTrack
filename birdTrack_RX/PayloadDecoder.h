@@ -25,6 +25,6 @@ typedef struct DecodedPayload {
   float altitude;
 } DecodedPayload;
 
-bool decode_payload(uint8_t* data_frame, size_t data_size, DecodedPayload payload);
+bool decode_payload(uint8_t* data_frame, size_t data_size, DecodedPayload* payload);
 
 #endif // PAYLOAD_DECODER

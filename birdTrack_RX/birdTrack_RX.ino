@@ -116,15 +116,23 @@ void loop() {
     uint8_t rx_data[30];
     size_t rx_length = 0;
     rxFlag = false;
-    radio.readData(rx_data, 14);
+    rx_length = 14;
+    radio.readData(rx_data, rx_length);
     // rx_length = radio.receive(&rx_data);
     if (_radiolib_status == RADIOLIB_ERR_NONE) {
-      both.printf("RX [%s]\n", rx_data);
+    char payload_txt[30];
+      for (int i=0; i<rx_length; i++) {
+        sprintf(&payload_txt[2*i], "%02X", rx_data[i]);
+      }
+      both.printf("RX [%s] %u\n", payload_txt, rx_length);
       both.printf("  RSSI: %.2f dBm\n", radio.getRSSI());
       both.printf("  SNR: %.2f dB\n", radio.getSNR());
 
       DecodedPayload payload;
-      decode_payload(rx_data, rx_length, payload);
+      bool result_ok = decode_payload(rx_data, rx_length, &payload);
+      if (!result_ok) {
+        both.println("Error: Failed to decode payload");
+      }
       both.printf("lat:%f lon:%f alt:%f", payload.latitude, payload.longitude, payload.altitude);
 
       char adv_data[20];
