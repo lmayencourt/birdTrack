@@ -12,19 +12,8 @@
 #include "LoRaWan_APP.h"
 #include "Arduino.h"
 
-#include "GPS_Air530.h"
-#include "GPS_Air530Z.h"
-
-//if GPS module is Air530, use this
-//Air530Class GPS;
-
-//if GPS module is Air530Z, use this
-Air530ZClass GPS;
-
-// OLED Screen
-// #include <Wire.h>
-#include "HT_SSD1306Wire.h"
-extern SSD1306Wire display;
+#include "OnBoardDisplay.h"
+#include "OnBoardGPS.h"
 
 /*
  * set LoraWan_RGB to 1,the RGB active in loraWan
@@ -64,7 +53,7 @@ char rxpacket[BUFFER_SIZE];
 static RadioEvents_t RadioEvents;
 
 float txNumber;
-bool lora_idle=true;
+bool lora_tx_done=true;
 
 // Legal 1% duty cycle
 uint64_t last_tx = 0;
@@ -72,36 +61,32 @@ uint64_t tx_start_time;
 uint64_t tx_end_time;
 uint64_t minimum_pause;
 
-void VextON(void)
-{
-  pinMode(Vext,OUTPUT);
-  digitalWrite(Vext, LOW);
-}
+enum BirdTrackingDeviceState {
+  BTD_STATE_GPS_SEARCHING,
+  BTD_STATE_GPS_TIME,
+  BTD_STATE_GPS_LOCKED,
+  BTD_STATE_LORA_SEND,
+  BTD_STATE_SLEEP,
+};
 
-void VextOFF(void) //Vext default OFF
-{
-  pinMode(Vext,OUTPUT);
-  digitalWrite(Vext, HIGH);
-}
+BirdTrackingDeviceState device_state;
 
 void setup()
 {
   Serial.begin(115200);
-  GPS.setmode(MODE_GPS_GLONASS);
-  GPS.begin();
+  Serial.println("Bird Tracking device");
+  Serial.println("Starting...");
 
-  Serial.println(F("A simple demonstration of Air530 module"));
-  Serial.println();
-
-  VextON();
-  delay(100);
-
+  display_on();
   display.init();
   display.setFont(ArialMT_Plain_10);
 
-  displayInfo();
+  // displayInfo();
+
+  gps_config();
 
   txNumber=0;
+  lora_tx_done = false;
 
   RadioEvents.TxDone = OnTxDone;
   RadioEvents.TxTimeout = OnTxTimeout;
@@ -111,127 +96,100 @@ void setup()
                                   LORA_SPREADING_FACTOR, LORA_CODINGRATE,
                                   LORA_PREAMBLE_LENGTH, LORA_FIX_LENGTH_PAYLOAD_ON,
                                   true, 0, 0, LORA_IQ_INVERSION_ON, 3000 ); 
+
+  device_state = BTD_STATE_GPS_SEARCHING;
+
+  Serial.println("Setup done, enter main loop");
 }
 
 void loop(){
-  uint32_t starttime = millis();
-  while( (millis()-starttime) < 1000 )
-  {
-    while (GPS.available() > 0)
-    {
-      GPS.encode(GPS.read());
-    }
+  char str[30];
+  int index = 0;
+
+  switch(device_state) {
+    case BTD_STATE_GPS_SEARCHING:
+      Serial.println("GPS Searching...");
+      GpsDateTime datetime;
+      gps_get_date_time(&datetime);
+      display.clear();  
+      display.setTextAlignment(TEXT_ALIGN_CENTER);
+      display.setFont(ArialMT_Plain_16);
+      display.drawString(64, 32-16/2, "GPS seearching...");
+
+      if (gps_is_time_valid()) {
+        display.setFont(ArialMT_Plain_10);
+        index = sprintf(str,"%02d-%02d-%02d",datetime.year,datetime.day,datetime.month);
+        str[index] = 0;
+        display.setTextAlignment(TEXT_ALIGN_LEFT);
+        display.drawString(0, 50, str);
+        
+        index = sprintf(str,"%02d:%02d:%02d",datetime.hour,datetime.minute,datetime.second);
+        str[index] = 0;
+        display.drawString(60, 50, str);
+        Serial.println(str);
+      } else {
+        Serial.println("No GPS time yet...");
+        display.drawString(60, 0, "No GPS time yet..");
+      }
+
+      display.display();
+
+      //delay(1000);
+      // displayInfo();
+
+      if (gps_is_position_valid()) {
+        device_state = BTD_STATE_GPS_LOCKED;
+      } else {
+        // display.setTextAlignment(TEXT_ALIGN_CENTER);
+        // display.setFont(ArialMT_Plain_16);
+        // display.drawString(64, 32-16/2, "No GPS signal");
+        // Serial.println("No GPS signal");
+        // display.display();
+        gps_update(1000);
+      }
+
+      break;
+    case BTD_STATE_GPS_LOCKED:
+      Serial.println("GPS Locked...");
+      display.clear();  
+      display.setTextAlignment(TEXT_ALIGN_CENTER);
+      display.setFont(ArialMT_Plain_16);
+      display.drawString(64, 32-16/2, "GPS Locked...");
+      display.display();
+      delay(1000);
+      display.clear();  
+      displayInfo();
+      display.display();
+      delay(1000);
+      gps_idle();
+      device_state = BTD_STATE_LORA_SEND;
+    break;
+    case BTD_STATE_LORA_SEND:
+        if(lora_tx_done == false)
+        {
+          delay(1000);
+          GpsInfo gps_info;
+          gps_get_info(&gps_info);
+          sprintf(txpacket, "lat:%f lon:%f alt:%f", gps_info.latitude, gps_info.longitude, gps_info.altitude);
+          Serial.printf("\r\nsending packet \"%s\" , length %d\r\n",txpacket, strlen(txpacket));
+          // turnOnRGB(COLOR_SEND,0); //change rgb color
+          tx_start_time = millis();
+          Radio.Send( (uint8_t *)txpacket, strlen(txpacket) ); //send the package out 
+
+          // Serial.println("tx time:");
+          // Serial.println()
+        } else {
+          // delay(minimum_pause);
+        }
+        Serial.printf("Tx time %i -> %i  delta %i\n", tx_start_time, tx_end_time, (tx_end_time - tx_start_time));
+        Serial.printf("Legal limit, wait %i sec.\n", (int)((minimum_pause - (millis() - tx_end_time)) / 1000) + 1);
+        Serial.println("Sending LoRa trame...");
+      break;
+    default:
+      Serial.printf("Error: Unhandled state &i", device_state);
+      break;
   }
-  displayInfo();
-  if (millis() > 5000 && GPS.charsProcessed() < 10)
-  {
-    Serial.println("No GPS detected: check wiring.");
-    while(true);
-  }
 
-  if(lora_idle == true)
-  {
-    delay(1000);
-    sprintf(txpacket, "lat:%f lon:%f alt:%f", GPS.location.lat(), GPS.location.lng(), GPS.altitude.meters());
-    Serial.printf("\r\nsending packet \"%s\" , length %d\r\n",txpacket, strlen(txpacket));
-    turnOnRGB(COLOR_SEND,0); //change rgb color
-    tx_start_time = millis();
-    Radio.Send( (uint8_t *)txpacket, strlen(txpacket) ); //send the package out 
-    lora_idle = false;
-
-    // Serial.println("tx time:");
-    // Serial.println()
-  } else {
-    delay(minimum_pause);
-  }
-  Serial.printf("Tx time %i -> %i  delta %i\n", tx_start_time, tx_end_time, (tx_end_time - tx_start_time));
-  Serial.printf("Legal limit, wait %i sec.\n", (int)((minimum_pause - (millis() - tx_end_time)) / 1000) + 1);
-
-}
-
-// Battery mV to percent, with values from
-// https://stackoverflow.com/questions/56266857/how-do-i-convert-battery-voltage-into-battery-percentage-on-a-4-15v-li-ion-batte
-uint8_t batteryMvToPercent(uint16_t voltage) {
-  if (voltage >= 4200) {
-    return 100;
-  } else if (voltage >= 4100) {
-    return 90;
-  } else if (voltage >= 4000) {
-    return 80;
-  } else if (voltage >= 3950) {
-    return 70;
-  } else if (voltage >= 3900) {
-    return 60;
-  } else if (voltage >= 3850) {
-    return 50;
-  } else if (voltage >= 3800) {
-    return 40;
-  } else if (voltage >= 3750) {
-    return 30;
-  } else if (voltage >= 3700) {
-    return 20;
-  } else if (voltage >= 3650) {
-    return 10;
-  } else {
-    return 0;
-  }
-}
-
-void displayInfo()
-{
-  Serial.print("Date/Time: ");
-  if (GPS.date.isValid())
-  {
-    Serial.printf("%d/%02d/%02d",GPS.date.year(),GPS.date.day(),GPS.date.month());
-  }
-  else
-  {
-    Serial.print("INVALID");
-  }
-
-  if (GPS.time.isValid())
-  {
-    Serial.printf(" %02d:%02d:%02d.%02d",GPS.time.hour(),GPS.time.minute(),GPS.time.second(),GPS.time.centisecond());
-  }
-  else
-  {
-    Serial.print(" INVALID");
-  }
-  Serial.println();
-  
-  Serial.print("LAT: ");
-  Serial.print(GPS.location.lat(),6);
-  Serial.print(", LON: ");
-  Serial.print(GPS.location.lng(),6);
-  Serial.print(", ALT: ");
-  Serial.print(GPS.altitude.meters());
-
-  Serial.println(); 
-  
-  Serial.print("SATS: ");
-  Serial.print(GPS.satellites.value());
-  Serial.print(", HDOP: ");
-  Serial.print(GPS.hdop.hdop());
-  Serial.print(", AGE: ");
-  Serial.print(GPS.location.age());
-  Serial.print(", COURSE: ");
-  Serial.print(GPS.course.deg());
-  Serial.print(", SPEED: ");
-  Serial.println(GPS.speed.kmph());
-  Serial.println();
-
-  display.clear();
-
-  display.drawString(0, 0, "SATS: " + String(GPS.satellites.value()));
-  uint16_t battery_mv = getBatteryVoltage();
-  display.drawString(50, 0, "batt:" + String(batteryMvToPercent(battery_mv)) + "% (" + String(float(battery_mv)/1000) + "mV");
-  display.drawString(0, 10, "LAT:" + String(GPS.location.lng()));
-  display.drawString(0, 20, "LON:" + String(GPS.location.lat()));
-  display.drawString(0, 30, "ALT:" + String(GPS.altitude.meters()) + "m");
-  display.drawString(0, 40, "SPEED:" + String(GPS.speed.kmph()) + "km/h");
-  display.drawString(0, 50, "COURSE:" + String(GPS.course.deg()));
-
-  display.display();
 }
 
 void OnTxDone( void )
@@ -239,7 +197,7 @@ void OnTxDone( void )
   tx_end_time = millis();
   turnOffRGB();
   Serial.printf("TX done %i......%i\n", tx_start_time, tx_end_time);
-  lora_idle = true;
+  lora_tx_done = true;
   minimum_pause = (tx_end_time - tx_start_time) * 100;
   last_tx = millis();
 }
@@ -249,5 +207,5 @@ void OnTxTimeout( void )
   turnOffRGB();
   Radio.Sleep( );
   Serial.println("TX Timeout......");
-  lora_idle = true;
+  lora_tx_done = true;
 }
