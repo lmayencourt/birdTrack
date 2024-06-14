@@ -49,8 +49,20 @@
 #define TRANSMIT_POWER      0
 
 // Ble advertising library
-#include "SimpleBLE.h"
-SimpleBLE ble;
+#include "ArduinoBLE.h"
+
+BLEService myService("fff0");
+BLEIntCharacteristic myCharacteristic("fff1", BLERead | BLEBroadcast);
+
+// Advertising parameters should have a global scope. Do NOT define them in 'setup' or in 'loop'
+const uint8_t completeRawAdvertisingData[] = {13, 0xff, 0xA1,0xA2,0xA3,0xA4,0xB1,0xB2,0xB3,0x0B4,0xC1,0xC2,0xC3,0xC4};
+
+#define BLE_AD_LENGHT_IDX 0
+#define BLE_AD_TYPE_IDX 1
+#define BLE_AD_HEADER_SIZE 2
+
+#define BLE_AD_MANUFACTURER_DATA 0x0ff
+uint8_t position_advertising_data[BLE_AD_HEADER_SIZE+3*4];
 
 String rxdata;
 volatile bool rxFlag = false;
@@ -77,8 +89,30 @@ void setup() {
   // Start receiving
   RADIOLIB_OR_HALT(radio.startReceive(RADIOLIB_SX126X_RX_TIMEOUT_INF));
 
-  // BLE
-  ble.begin("BirdTrack");
+  if (!BLE.begin()) {
+    Serial.println("failed to initialize BLE!");
+    while (1);
+  }
+
+  myService.addCharacteristic(myCharacteristic);
+  BLE.addService(myService);
+
+  // Build advertising data packet
+  BLEAdvertisingData advData;
+  // If a packet has a raw data parameter, then all the other parameters of the packet will be ignored
+  advData.setRawData(completeRawAdvertisingData, sizeof(completeRawAdvertisingData));
+  // Copy set parameters in the actual advertising packet
+  BLE.setAdvertisingData(advData);
+
+  // Build scan response data packet
+  BLEAdvertisingData scanData;
+  scanData.setLocalName("Bird Track");
+  // Copy set parameters in the actual scan response packet
+  BLE.setScanResponseData(scanData);
+
+  BLE.advertise();
+
+  both.println("Starting main loop");
 }
 
 void loop() {
@@ -120,7 +154,7 @@ void loop() {
     radio.readData(rx_data, rx_length);
     // rx_length = radio.receive(&rx_data);
     if (_radiolib_status == RADIOLIB_ERR_NONE) {
-    char payload_txt[30];
+      char payload_txt[30];
       for (int i=0; i<rx_length; i++) {
         sprintf(&payload_txt[2*i], "%02X", rx_data[i]);
       }
@@ -133,11 +167,30 @@ void loop() {
       if (!result_ok) {
         both.println("Error: Failed to decode payload");
       }
-      both.printf("lat:%f lon:%f alt:%f", payload.latitude, payload.longitude, payload.altitude);
+      both.printf("lat:%f lon:%f alt:%f\n", payload.latitude, payload.longitude, payload.altitude);
 
       char adv_data[20];
-      sprintf(adv_data, "RSSI: %.2f dB", radio.getRSSI());
-      ble.begin(adv_data);
+      // Build advertising data packet
+      BLE.stopAdvertise();
+      BLEAdvertisingData advData;
+      // If a packet has a raw data parameter, then all the other parameters of the packet will be ignored
+      position_advertising_data[BLE_AD_LENGHT_IDX] = sizeof(position_advertising_data) - 1; // lenght byte not included in size
+      position_advertising_data[BLE_AD_TYPE_IDX] = BLE_AD_MANUFACTURER_DATA;
+      size_t data_offset = BLE_AD_HEADER_SIZE;
+      memcpy(position_advertising_data + data_offset, &payload.latitude, sizeof(payload.latitude));
+      data_offset+= sizeof(payload.latitude);
+      memcpy(position_advertising_data + data_offset, &payload.longitude, sizeof(payload.longitude));
+      data_offset+= sizeof(payload.longitude);
+      memcpy(position_advertising_data + data_offset, &payload.altitude, sizeof(payload.altitude));
+      advData.setRawData(position_advertising_data, sizeof(position_advertising_data));
+      // Copy set parameters in the actual advertising packet
+      BLE.setAdvertisingData(advData);
+      BLE.advertise();
+
+      for (int i=0; i<sizeof(position_advertising_data); i++) {
+        sprintf(&payload_txt[2*i], "%02X", position_advertising_data[i]);
+      }
+      both.printf("Advertising [%s] %u\n", payload_txt, sizeof(position_advertising_data));
     }
     RADIOLIB_OR_HALT(radio.startReceive(RADIOLIB_SX126X_RX_TIMEOUT_INF));
   }
