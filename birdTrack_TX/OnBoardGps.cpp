@@ -137,6 +137,14 @@ float gpsGetAltitude() {
   return GPS.altitude.meters();
 }
 
+unsigned int gpsGetSatellitesNbr() {
+  return GPS.satellites.value();
+}
+
+unsigned int gpsGetAge() {
+  return GPS.location.age();
+}
+
 void gps_idle() {
   GPS.end();
 }

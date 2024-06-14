@@ -126,8 +126,7 @@ void setup()
                                   true, 0, 0, LORA_IQ_INVERSION_ON, 3000 ); 
 
   // For testing, start in Lora directly
-  // device_state = BTD_STATE_GPS_SEARCHING;
-  device_state = BTD_STATE_LORA_SEND;
+  device_state = BTD_STATE_GPS_SEARCHING;
 
   Log.noticeln("Setup done, enter main loop");
 }
@@ -162,19 +161,17 @@ void loop(){
         display.drawString(60, 0, "No GPS time yet..");
       }
 
-      display.display();
+      display.setFont(ArialMT_Plain_10);
+      display.setTextAlignment(TEXT_ALIGN_LEFT);
+      index = sprintf(str, "sat: %d      %d", gpsGetSatellitesNbr(), gpsGetAge());
+      str[index] = 0;
+      display.drawString(0, 0, str);
 
-      //delay(1000);
-      // displayInfo();
+      display.display();
 
       if (gps_is_position_valid()) {
         device_state = BTD_STATE_GPS_LOCKED;
       } else {
-        // display.setTextAlignment(TEXT_ALIGN_CENTER);
-        // display.setFont(ArialMT_Plain_16);
-        // display.drawString(64, 32-16/2, "No GPS signal");
-        // Log.noticeln("No GPS signal");
-        // display.display();
         gps_update(1000);
       }
 
@@ -195,18 +192,25 @@ void loop(){
       device_state = BTD_STATE_LORA_SEND;
     break;
     case BTD_STATE_LORA_SEND: {
+        Log.noticeln("LoRa Sending...");
+        display.clear();
+        display.setTextAlignment(TEXT_ALIGN_CENTER);
+        display.setFont(ArialMT_Plain_16);
+        display.drawString(64, 32-16/2, "LoRa Sending...");
+        display.display();
+
         // Build payload
         GpsInfo gps_info;
         gps_get_info(&gps_info);
         // sprintf(tx_packet, "lat:%f lon:%f alt:%f", gps_info.latitude, gps_info.longitude, gps_info.altitude);
         DecodedPayload payload;
         payload.command = CMD_FULL_POSITION_UPDATE;
-        // payload.latitude = gps_info.latitude;
-        // payload.longitude = gps_info.longitude;
-        // payload.altitude = gps_info.altitude;
-        payload.latitude = 10.0;
-        payload.longitude = 20.0;
-        payload.altitude = 30.0;
+        payload.latitude = gps_info.latitude;
+        payload.longitude = gps_info.longitude;
+        payload.altitude = gps_info.altitude;
+        // payload.latitude = 10.0;
+        // payload.longitude = 20.0;
+        // payload.altitude = 30.0;
         size_t payload_length = encode_payload(payload, (uint8_t*)&tx_packet, sizeof(tx_packet));
         if (payload_length != 14) {
           Log.errorln("Failed to build payload %d", payload_length);
@@ -235,10 +239,17 @@ void loop(){
       }
       break;
     case BTD_STATE_SLEEP:
+      Log.noticeln("Sleeping...");
+      display.clear();
+      display.setTextAlignment(TEXT_ALIGN_CENTER);
+      display.setFont(ArialMT_Plain_16);
+      display.drawString(64, 32-16/2, "Sleeping...");
+      display.display();
+
       Log.traceln("Legal limit, wait %u sec.", (int)((minimum_pause - (millis() - tx_end_time)) / 1000) + 1);
       Log.noticeln("Enter deep sleep for %u...", minimum_pause);
       delay(minimum_pause);
-      device_state = BTD_STATE_LORA_SEND;
+      device_state = BTD_STATE_GPS_SEARCHING;
       break;
     default:
       Log.errorln("Unhandled state &i", device_state);

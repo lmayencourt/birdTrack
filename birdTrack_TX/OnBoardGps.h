@@ -45,6 +45,8 @@ bool gps_get_info(GpsInfo* info);
 float gpsGetLatitude();
 float gpsGetLongitude();
 float gpsGetAltitude();
+unsigned int gpsGetSatellitesNbr();
+unsigned int gpsGetAge();
 
 void gps_idle();
 
