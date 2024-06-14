@@ -31,6 +31,8 @@ typedef struct GpsDateTime {
 
 bool gps_config();
 
+void gpsStart();
+
 // Return true if GPS time is valid
 bool gps_is_time_valid();
 // Return true if GPS position is valid

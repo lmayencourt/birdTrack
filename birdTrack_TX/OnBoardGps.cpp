@@ -25,6 +25,10 @@ bool gps_config() {
   GPS.begin();
 }
 
+void gpsStart() {
+  GPS.begin();
+}
+
 bool gps_is_time_valid() {
   return GPS.time.isValid();
 }
@@ -55,9 +59,6 @@ void gps_update(uint32_t timeout) {
 // Return true if a GPS signal is found
 bool gps_is_locked() {
   bool gps_locked = true;
-
-  GPS.begin();
-  gps_config();
 
   uint32_t start_time = millis();
   while( (millis()-start_time) < UPDATE_TIMEOUT )
@@ -95,7 +96,6 @@ bool gps_is_locked() {
   {
     gps_locked = false;
   }
-  GPS.end();
 
   return gps_locked;
 }

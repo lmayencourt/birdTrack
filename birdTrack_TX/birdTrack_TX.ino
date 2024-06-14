@@ -17,6 +17,10 @@
 #include "OnBoardGPS.h"
 #include "PayloadEncoder.h"
 
+// When true, GPS is deactivate between every loop
+// in order to improve battery life.
+#define GPS_LOW_POWER 0
+
 /*
  * set LoraWan_RGB to 1,the RGB active in loraWan
  * RGB red means sending;
@@ -64,6 +68,7 @@ uint32_t tx_end_time = 0;
 uint32_t minimum_pause = 999999;
 
 enum BirdTrackingDeviceState {
+  BTD_STATE_GPS_START,
   BTD_STATE_GPS_SEARCHING,
   BTD_STATE_GPS_TIME,
   BTD_STATE_GPS_LOCKED,
@@ -126,7 +131,7 @@ void setup()
                                   true, 0, 0, LORA_IQ_INVERSION_ON, 3000 ); 
 
   // For testing, start in Lora directly
-  device_state = BTD_STATE_GPS_SEARCHING;
+  device_state = BTD_STATE_GPS_START;
 
   Log.noticeln("Setup done, enter main loop");
 }
@@ -136,6 +141,12 @@ void loop(){
   int index = 0;
 
   switch(device_state) {
+    case BTD_STATE_GPS_START:
+      if (GPS_LOW_POWER) {
+        gpsStart();
+      }
+      device_state = BTD_STATE_GPS_SEARCHING;
+      break;
     case BTD_STATE_GPS_SEARCHING:
       Log.noticeln("GPS Searching...");
       GpsDateTime datetime;
@@ -188,7 +199,9 @@ void loop(){
       displayInfo();
       display.display();
       delay(1000);
-      gps_idle();
+      if (GPS_LOW_POWER) {
+        gps_idle();
+      }
       device_state = BTD_STATE_LORA_SEND;
     break;
     case BTD_STATE_LORA_SEND: {
