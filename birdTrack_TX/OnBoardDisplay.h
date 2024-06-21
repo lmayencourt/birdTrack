@@ -16,7 +16,8 @@ extern SSD1306Wire display;
 
 // Function prototypes
 void display_on();
-void displayInfo();
+void displayNextScreen();
+void displayInfo(char* current_state);
 uint8_t batteryMvToPercent(uint16_t voltage);
 
 #endif // ON_BOARD_DISPLAY

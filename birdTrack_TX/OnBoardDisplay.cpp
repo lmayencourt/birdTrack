@@ -5,7 +5,19 @@
 #include "OnBoardDisplay.h"
 
 #include "Arduino.h"
+#include "ArduinoLog.h"
+
 #include "OnBoardGps.h"
+
+enum InfoScreen {
+  INFOSCREEN_STATE = 0,
+  INFOSCREEN_GPS,
+  INFOSCREEN_LORA,
+  INFOSCREEN_OFF,
+  INFOSCREEN_MAX_IDX,
+};
+
+static InfoScreen info_screen_idx = INFOSCREEN_STATE;
 
 // Turn on the OLed display
 void display_on() {
@@ -19,66 +31,59 @@ void display_off() {
   digitalWrite(Vext, HIGH);
 }
 
+void displayNextScreen() {
+  switch(info_screen_idx) {
+    case INFOSCREEN_STATE: info_screen_idx = INFOSCREEN_GPS; break;
+    case INFOSCREEN_GPS: info_screen_idx = INFOSCREEN_STATE; break;
+    case INFOSCREEN_LORA: info_screen_idx = INFOSCREEN_OFF; break;
+    case INFOSCREEN_OFF: info_screen_idx = INFOSCREEN_STATE; break;
+    default: info_screen_idx = INFOSCREEN_STATE; break;
+  }
+}
+
 // Display the GPS info on the oled screen
-void displayInfo()
+void displayInfo(char* current_state)
 {
-  // Serial.print("Date/Time: ");
-  // if (GPS.date.isValid())
-  // {
-  //   Serial.printf("%d/%02d/%02d",GPS.date.year(),GPS.date.day(),GPS.date.month());
-  // }
-  // else
-  // {
-  //   Serial.print("INVALID");
-  // }
-
-  // if (GPS.time.isValid())
-  // {
-  //   Serial.printf(" %02d:%02d:%02d.%02d",GPS.time.hour(),GPS.time.minute(),GPS.time.second(),GPS.time.centisecond());
-  // }
-  // else
-  // {
-  //   Serial.print(" INVALID");
-  // }
-  // Serial.println();
-
-  display.setFont(ArialMT_Plain_10);
-  display.setTextAlignment(TEXT_ALIGN_LEFT);
-  
+  Log.noticeln("Displaying state: %d", info_screen_idx);
   GpsInfo gps_info;
   gps_get_info(&gps_info);
 
-  Serial.print("LAT: ");
-  Serial.print(gps_info.latitude,6);
-  Serial.print(", LON: ");
-  Serial.print(gps_info.longitude,6);
-  Serial.print(", ALT: ");
-  Serial.print(gps_info.altitude);
+  Log.notice("LAT: %f ", gps_info.latitude);
+  Log.notice("LON: %f ", gps_info.longitude);
+  Log.noticeln("ALT: %f", gps_info.altitude);
 
-  Serial.println(); 
-  
-  Serial.print("SATS: ");
-  Serial.print(gps_info.satellites_nbr);
-  // Serial.print(", HDOP: ");
-  // Serial.print(GPS.hdop.hdop());
-  // Serial.print(", AGE: ");
-  // Serial.print(GPS.location.age());
-  // Serial.print(", COURSE: ");
-  // Serial.print(GPS.course.deg());
-  Serial.print(", SPEED: ");
-  Serial.println(gps_info.speed);
-  Serial.println();
+  Log.notice("SATS: %d", gps_info.satellites_nbr);
+  Log.noticeln(", SPEED: %f", gps_info.speed);
+
+  uint16_t battery_mv = getBatteryVoltage();
 
   display.clear();
+  switch (info_screen_idx) {
+    case INFOSCREEN_STATE:
+      display.setFont(ArialMT_Plain_16);
+      display.drawString(0, 0, current_state);
+      break;
+    case INFOSCREEN_GPS:
+        display.setFont(ArialMT_Plain_10);
+        display.setTextAlignment(TEXT_ALIGN_LEFT);
 
-  display.drawString(0, 0, "SATS: " + String(gps_info.satellites_nbr));
-  uint16_t battery_mv = getBatteryVoltage();
-  // display.drawString(50, 0, "batt:" + String(batteryMvToPercent(battery_mv)) + "% (" + String(float(battery_mv)/1000) + "mV");
-  display.drawString(0, 10, "LON:" + String(gps_info.longitude));
-  display.drawString(0, 20, "LAT:" + String(gps_info.latitude));
-  display.drawString(0, 30, "ALT:" + String(gps_info.altitude) + "m");
-  display.drawString(0, 40, "SPEED:" + String(gps_info.speed) + "km/h");
-  // display.drawString(0, 50, "COURSE:" + String(GPS.course.deg()));
+        display.drawString(0, 0, "SATS: " + String(gps_info.satellites_nbr));
+        display.drawString(50, 0, "batt:" + String(batteryMvToPercent(battery_mv)) + "% (" + String(float(battery_mv)/1000) + "mV");
+        display.drawString(0, 10, "LON:" + String(gps_info.longitude));
+        display.drawString(0, 20, "LAT:" + String(gps_info.latitude));
+        display.drawString(0, 30, "ALT:" + String(gps_info.altitude) + "m");
+        display.drawString(0, 40, "SPEED:" + String(gps_info.speed) + "km/h");
+        // display.drawString(0, 50, "COURSE:" + String(GPS.course.deg()));
+      break;
+    case INFOSCREEN_LORA:
+      break;
+    // case INFOSCREEN_OFF:
+    //   break;
+    default:
+      display.setFont(ArialMT_Plain_16);
+      display.drawString(0, 0, "Error IDX");
+      break;
+  }
 
   display.display();
 }

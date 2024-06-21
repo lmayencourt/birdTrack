@@ -88,7 +88,7 @@ bool gps_is_locked() {
       if( (millis()-start_time) > printinfo )
       {
         printinfo += 1000;
-        displayInfo();
+        // displayInfo();
       }
     }
   }

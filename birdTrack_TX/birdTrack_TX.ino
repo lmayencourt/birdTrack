@@ -79,6 +79,9 @@ enum BirdTrackingDeviceState {
 
 BirdTrackingDeviceState device_state;
 
+#define SCREEN_ROLLOUT_DELAY 3500
+static TimerEvent_t screen_rollout_timer;
+
 void logPrefix(Print* _logOutput, int logLevel) {
   // Division constants
   const unsigned long MSECS_PER_SEC       = 1000;
@@ -102,6 +105,13 @@ void logPrefix(Print* _logOutput, int logLevel) {
   _logOutput->print(timestamp);
 }
 
+void onScreenRolloutTimeout()
+{
+  Log.infoln("Screen rollout");
+  displayNextScreen();
+  TimerStart(&screen_rollout_timer);
+}
+
 void setup()
 {
   Serial.begin(115200);
@@ -112,9 +122,6 @@ void setup()
 
   display_on();
   display.init();
-  display.setFont(ArialMT_Plain_10);
-
-  // displayInfo();
 
   gps_config();
 
@@ -133,15 +140,23 @@ void setup()
   // For testing, start in Lora directly
   device_state = BTD_STATE_GPS_START;
 
+  // Setup timer for screen rolling
+  TimerInit(&screen_rollout_timer, onScreenRolloutTimeout);
+  TimerSetValue(&screen_rollout_timer, SCREEN_ROLLOUT_DELAY);
+  TimerStart(&screen_rollout_timer);
+
   Log.noticeln("Setup done, enter main loop");
 }
 
 void loop(){
+  char state_str[30];
   char str[30];
   int index = 0;
 
   switch(device_state) {
     case BTD_STATE_GPS_START:
+      index = sprintf(state_str, "GPS Start...");
+      state_str[index] = 0;
       if (GPS_LOW_POWER) {
         gpsStart();
       }
@@ -151,34 +166,20 @@ void loop(){
       Log.noticeln("GPS Searching...");
       GpsDateTime datetime;
       gps_get_date_time(&datetime);
-      display.clear();  
-      display.setTextAlignment(TEXT_ALIGN_CENTER);
-      display.setFont(ArialMT_Plain_16);
-      display.drawString(64, 32-16/2, "GPS seearching...");
+      index = sprintf(state_str, "GPS searching...");
+      state_str[index] = 0;
 
       if (gps_is_time_valid()) {
-        display.setFont(ArialMT_Plain_10);
         index = sprintf(str,"%02d-%02d-%02d",datetime.year,datetime.day,datetime.month);
         str[index] = 0;
-        display.setTextAlignment(TEXT_ALIGN_LEFT);
-        display.drawString(0, 50, str);
-        
-        index = sprintf(str,"%02d:%02d:%02d",datetime.hour,datetime.minute,datetime.second);
+        Log.notice(str);
+
+        index = sprintf(str,"-%02d:%02d:%02d",datetime.hour,datetime.minute,datetime.second);
         str[index] = 0;
-        display.drawString(60, 50, str);
         Log.noticeln(str);
       } else {
         Log.noticeln("No GPS time yet...");
-        display.drawString(60, 0, "No GPS time yet..");
       }
-
-      display.setFont(ArialMT_Plain_10);
-      display.setTextAlignment(TEXT_ALIGN_LEFT);
-      index = sprintf(str, "sat: %d      %d", gpsGetSatellitesNbr(), gpsGetAge());
-      str[index] = 0;
-      display.drawString(0, 0, str);
-
-      display.display();
 
       if (gps_is_position_valid()) {
         device_state = BTD_STATE_GPS_LOCKED;
@@ -189,16 +190,9 @@ void loop(){
       break;
     case BTD_STATE_GPS_LOCKED:
       Log.noticeln("GPS Locked...");
-      display.clear();  
-      display.setTextAlignment(TEXT_ALIGN_CENTER);
-      display.setFont(ArialMT_Plain_16);
-      display.drawString(64, 32-16/2, "GPS Locked...");
-      display.display();
-      delay(1000);
-      display.clear();  
-      displayInfo();
-      display.display();
-      delay(1000);
+      index = sprintf(state_str, "GPS Ok");
+      state_str[index] = 0;
+
       if (GPS_LOW_POWER) {
         gps_idle();
       }
@@ -207,10 +201,8 @@ void loop(){
     case BTD_STATE_LORA_SEND: {
         Log.noticeln("LoRa Sending...");
         display.clear();
-        display.setTextAlignment(TEXT_ALIGN_CENTER);
-        display.setFont(ArialMT_Plain_16);
-        display.drawString(64, 32-16/2, "LoRa Sending...");
-        display.display();
+        index = sprintf(state_str, "LoRa Tx...");
+        state_str[index] = 0;
 
         // Build payload
         GpsInfo gps_info;
@@ -253,11 +245,8 @@ void loop(){
       break;
     case BTD_STATE_SLEEP:
       Log.noticeln("Sleeping...");
-      display.clear();
-      display.setTextAlignment(TEXT_ALIGN_CENTER);
-      display.setFont(ArialMT_Plain_16);
-      display.drawString(64, 32-16/2, "Sleeping...");
-      display.display();
+      index = sprintf(state_str, "Sleeping...");
+      state_str[index] = 0;
 
       Log.traceln("Legal limit, wait %u sec.", (int)((minimum_pause - (millis() - tx_end_time)) / 1000) + 1);
       Log.noticeln("Enter deep sleep for %u...", minimum_pause);
@@ -269,6 +258,7 @@ void loop(){
       break;
   }
 
+  displayInfo(state_str);
 }
 
 void OnTxDone( void )
